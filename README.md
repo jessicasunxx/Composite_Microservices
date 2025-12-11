@@ -1,7 +1,6 @@
 # Walk Service – Cloud Run Microservice
 
-This repository contains the **Walk Service**, a FastAPI microservice for managing dog-walk requests, assignments, and event logs.
-The service is fully deployed on **Google Cloud Run** and connected to a **Google Cloud SQL (MySQL)** database.
+The **Walk Service** is a standalone FastAPI microservice that models a simple dog-walking backend, providing RESTful endpoints for managing walk requests, walker assignments, and event logs. Designed as a lightweight cloud-native service, it runs inside a Docker container and is deployed on **Google Cloud Run**, which automatically scales the service without requiring manual server management. While the core CRUD logic uses in-memory storage for simplicity, the service also demonstrates real cloud integration by connecting to a **Google Cloud SQL (MySQL)** database through a
 
 ---
 
