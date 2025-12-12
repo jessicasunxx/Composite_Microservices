@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Query, Path
 from utils.db import get_connection
+from utils.pubsub import publish_event
 
 from models.walk import WalkCreate, WalkRead, WalkUpdate
 from models.assignment import AssignmentCreate, AssignmentRead, AssignmentUpdate
@@ -40,12 +41,18 @@ def test_db():
 # -----------------------------------------------------------------------------
 # Walk Endpoints
 # -----------------------------------------------------------------------------
+
 @app.post("/walks", response_model=WalkRead, status_code=201)
 def create_walk(walk: WalkCreate):
     if walk.id in walks:
         raise HTTPException(status_code=400, detail="Walk already exists")
-    walks[walk.id] = WalkRead(**walk.model_dump())
-    return walks[walk.id]
+
+    new_walk = WalkRead(**walk.model_dump())
+    walks[walk.id] = new_walk
+
+    publish_event("walk_created", new_walk.model_dump())
+
+    return new_walk
 
 
 @app.get("/walks", response_model=List[WalkRead])
