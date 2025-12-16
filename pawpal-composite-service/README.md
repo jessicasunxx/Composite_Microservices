@@ -1,9 +1,24 @@
 # PawPal Composite Microservice
 
-This composite microservice encapsulates and exposes the atomic microservices:
-- **Walk Service** - Manages dog walk requests
-- **User Service** - Manages users and dogs
-- **Review Service** - Manages reviews and ratings
+This composite microservice **orchestrates three separate atomic microservices**:
+
+1. **Walk Service** (Port 8000) - FastAPI service managing dog walk requests
+   - Location: `../Walk-Service-main/`
+   - Standalone atomic microservice
+
+2. **User Service** (Port 3001) - Express.js service managing users and dogs
+   - Location: `../Cloud-Computing-Database-xuanming/user-service/`
+   - Standalone atomic microservice
+
+3. **Review Service** (Port 8001) - FastAPI service managing reviews and ratings
+   - Location: `../PawPal-Review-main/`
+   - Standalone atomic microservice
+
+**This composite service** (Port 8002) encapsulates and orchestrates all three atomic services, providing:
+- Unified API that delegates to all three services
+- Foreign key constraint validation across services
+- Parallel execution for improved performance
+- Aggregated endpoints that combine data from multiple services
 
 ## Features
 
@@ -19,10 +34,14 @@ This composite microservice encapsulates and exposes the atomic microservices:
 ### Prerequisites
 
 - Python 3.8+
-- Running atomic microservices:
-  - Walk Service (default: `http://localhost:8000`)
-  - Review Service (default: `http://localhost:8001`)
-  - User Service (default: `http://localhost:3001`)
+- Node.js 16+ (for User Service)
+- MySQL 8.0+ (for User and Review services)
+- **All three atomic microservices must be running:**
+  - Walk Service (default: `http://localhost:8000`) - See `../Walk-Service-main/`
+  - Review Service (default: `http://localhost:8001`) - See `../PawPal-Review-main/`
+  - User Service (default: `http://localhost:3001`) - See `../Cloud-Computing-Database-xuanming/user-service/`
+
+**See `SETUP_GUIDE.md` for detailed instructions on starting all services.**
 
 ### Installation
 
@@ -163,4 +182,5 @@ FastAPI automatically generates OpenAPI documentation. Access it at:
 - **404 Not Found**: Resource doesn't exist
 - **400 Bad Request**: Foreign key constraint violation or invalid input
 - **503 Service Unavailable**: Atomic service not initialized or unavailable
+
 

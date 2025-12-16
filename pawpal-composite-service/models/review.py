@@ -28,3 +28,4 @@ class Review(BaseModel):
     createdAt: datetime = Field(..., description="Timestamp when review was created")
     updatedAt: datetime = Field(..., description="Timestamp when review was last updated")
 
+

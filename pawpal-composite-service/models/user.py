@@ -29,3 +29,4 @@ class Dog(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
+
