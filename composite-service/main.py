@@ -152,12 +152,13 @@ async def create_assignment(
 
 @app.get("/assignments", response_model=List[AssignmentRead])
 async def list_assignments(
+    walk_id: Optional[UUID] = Query(None),
     walker_id: Optional[UUID] = Query(None),
     status: Optional[str] = Query(None),
     client: AtomicServiceClient = Depends(get_client)
 ):
     """List assignments - delegated to atomic service."""
-    return await client.list_assignments(walker_id=walker_id, status=status)
+    return await client.list_assignments(walk_id=walk_id, walker_id=walker_id, status=status)
 
 
 @app.get("/assignments/{assignment_id}", response_model=AssignmentRead)
