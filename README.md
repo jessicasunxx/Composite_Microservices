@@ -19,33 +19,17 @@ The **Walk Service** is a standalone FastAPI microservice that models a simple d
 ```
 .
 ├── Dockerfile
-├── main.py                    # Walk Service atomic microservice (port 8000)
-├── user-service/              # User Service atomic microservice (port 3001)
-│   ├── main.py
-│   └── requirements.txt
-├── pawpal-composite-service/  # Composite microservice (port 8002)
+├── main.py                    # Atomic microservice (port 8000)
+├── composite-service/         # Composite microservice (port 8001)
 │   ├── main.py               # Composite FastAPI app
-│   ├── constraints.py        # Foreign key constraint validation
-│   ├── clients/              # HTTP clients for atomic services
-│   │   ├── walk_client.py
-│   │   ├── user_client.py
-│   │   └── review_client.py
-│   ├── models/               # Pydantic models
-│   │   ├── walk.py
-│   │   ├── user.py
-│   │   └── review.py
-│   └── requirements.txt
-├── composite-service/         # Legacy composite service (port 8001)
-│   ├── main.py               # Composite FastAPI app (Walk Service only)
 │   ├── client.py             # HTTP client for atomic service
 │   ├── constraints.py        # Foreign key constraint validation
-│   └── requirements.txt
-├── models/                    # Shared models
-│   ├── walk.py
-│   ├── user.py
-│   ├── review.py
-│   ├── assignment.py
-│   └── event.py
+│   └── requirements.txt      # Composite service dependencies
+├── models/
+├── services/
+├── middleware/
+├── framework/
+├── resources/
 ├── utils/
 │   ├── db.py
 │   └── pubsub.py
@@ -228,98 +212,59 @@ Received walk event: {...}
 
 ## 🔗 Composite Microservice
 
-This project implements **three atomic microservices** and a **composite microservice** that orchestrates them all:
+This project implements a **composite microservice** that encapsulates and orchestrates the atomic Walk Service. The composite service adds:
 
-### Three Atomic Microservices
-
-1. **Walk Service** (Port 8000) - FastAPI service managing dog walk requests, assignments, and events
-   - Location: `main.py` (root directory)
-   - Standalone atomic microservice
-
-2. **User Service** (Port 3001) - Service managing users (owners and walkers)
-   - Location: `user-service/main.py` or external Express.js service
-   - Standalone atomic microservice
-
-3. **Review Service** (Port 8001) - FastAPI service managing reviews and ratings
-   - Standalone atomic microservice
-
-### Composite Microservice
-
-The **PawPal Composite Service** (Port 8002) in `pawpal-composite-service/` encapsulates and orchestrates all three atomic microservices, providing:
-
-- **Foreign Key Constraint Validation**: Enforces referential integrity across services (e.g., reviews must reference existing walks and users)
+- **Foreign Key Constraint Validation**: Enforces referential integrity (e.g., assignments and events must reference existing walks)
 - **Orchestrated Endpoints**: Higher-level operations that coordinate multiple atomic service calls
 - **Parallel Execution**: Uses threads for concurrent operations to improve performance
-- **Unified API**: Single entry point for all three atomic services
 
 ### Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│   PawPal Composite Service (Port 8002)             │
-│   - FK Constraint Validation                        │
-│   - Orchestrated Operations                         │
-│   - Parallel Execution                              │
-│   - Unified API for all three services              │
-└───────┬──────────────┬──────────────┬──────────────┘
-        │              │              │
-        │ HTTP         │ HTTP         │ HTTP
-        ▼              ▼              ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ Walk Service │ │ User Service │ │Review Service│
-│  (Port 8000) │ │  (Port 3001) │ │  (Port 8001) │
-│              │ │              │ │              │
-│ - Walks      │ │ - Users      │ │ - Reviews    │
-│ - Assignments│ │ - Dogs       │ │ - Ratings    │
-│ - Events     │ │              │ │              │
-└──────────────┘ └──────────────┘ └──────────────┘
+┌─────────────────────────────────────┐
+│   Composite Service (Port 8001)     │
+│   - FK Constraint Validation        │
+│   - Orchestrated Operations          │
+│   - Parallel Execution               │
+└──────────────┬──────────────────────┘
+               │ HTTP Calls
+               ▼
+┌─────────────────────────────────────┐
+│   Atomic Service (Port 8000)        │
+│   - Direct CRUD Operations           │
+│   - In-memory Storage                │
+└─────────────────────────────────────┘
 ```
 
 ### Running the Composite Service
 
-#### Option 1: PawPal Composite Service (Orchestrates All Three Services)
-
-**Prerequisites**: All three atomic microservices must be running.
+#### 1. Start the Atomic Service First
 
 ```bash
-# Terminal 1: Start Walk Service
+# Terminal 1: Start atomic service
 uvicorn main:app --reload --port 8000
-
-# Terminal 2: Start User Service (if in this repo)
-cd user-service
-uvicorn main:app --reload --port 3001
-
-# Terminal 3: Start Review Service (external or create one)
-
-# Terminal 4: Start Composite Service
-cd pawpal-composite-service
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8002
 ```
 
-**Access Composite Service API Docs:**
-```
-http://localhost:8002/docs
-```
-
-#### Option 2: Legacy Composite Service (Walk Service Only)
+#### 2. Start the Composite Service
 
 ```bash
-# Terminal 1: Start Walk Service
-uvicorn main:app --reload --port 8000
-
-# Terminal 2: Start Composite Service
+# Terminal 2: Start composite service
 cd composite-service
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8001
 ```
 
-**Access Composite Service API Docs:**
+Or set the atomic service URL:
+
+```bash
+ATOMIC_SERVICE_URL=http://localhost:8000 uvicorn main:app --reload --port 8001
+```
+
+#### 3. Access Composite Service API Docs
+
 ```
 http://localhost:8001/docs
 ```
-
-**See `pawpal-composite-service/README.md` and `pawpal-composite-service/SETUP_GUIDE.md` for detailed setup instructions.**
 
 ### Composite Service Features
 
@@ -472,17 +417,8 @@ with ThreadPoolExecutor(max_workers=4) as executor:
 
 ## 🎯 Requirements Satisfied
 
-✅ **Three Atomic Microservices**: Walk Service, User Service, Review Service  
-✅ **Composite Microservice**: Encapsulates and exposes all three atomic microservice APIs  
-✅ **Delegation**: All operations delegate to the atomic services via HTTP  
+✅ **Composite Microservice**: Encapsulates and exposes atomic microservice APIs  
+✅ **Delegation**: All operations delegate to the atomic service via HTTP  
 ✅ **Parallel Execution**: Uses threads for concurrent operations (`ThreadPoolExecutor`)  
-✅ **Foreign Key Constraints**: Enforces logical FK constraints across services (e.g., reviews validate walk and user existence)  
-✅ **Orchestration**: Provides higher-level endpoints that coordinate multiple operations across all three services  
-✅ **OpenAPI Documentation**: Auto-generated by FastAPI with Pydantic models
-
-## 📚 Additional Documentation
-
-- **PawPal Composite Service**: See `pawpal-composite-service/README.md` for the full three-service composite implementation
-- **Setup Guide**: See `pawpal-composite-service/SETUP_GUIDE.md` for detailed setup instructions
-- **Architecture**: See `pawpal-composite-service/ARCHITECTURE.md` for architecture details
-- **Requirements Verification**: See `pawpal-composite-service/REQUIREMENTS_VERIFICATION.md` for requirements checklist
+✅ **Foreign Key Constraints**: Enforces logical FK constraints at composite layer  
+✅ **Orchestration**: Provides higher-level endpoints that coordinate multiple operations

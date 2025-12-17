@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
@@ -27,10 +26,18 @@ from clients.walk_client import WalkServiceClient
 from clients.review_client import ReviewServiceClient
 from clients.user_client import UserServiceClient
 from constraints import (
-    validate_walk_exists,
     validate_review_foreign_keys,
     ForeignKeyConstraintError
 )
+from services.orchestration import OrchestrationService
+import sys
+from pathlib import Path
+
+# Import models from parent directory (shared, not duplicated)
+parent_dir = str(Path(__file__).parent.parent)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from models.walk import WalkCreate, WalkRead, WalkUpdate
 from models.review import ReviewCreate, ReviewUpdate, Review
 from models.user import User, Dog
@@ -45,15 +52,17 @@ user_service_url = os.getenv("USER_SERVICE_URL", "http://localhost:3001")
 walk_client: Optional[WalkServiceClient] = None
 review_client: Optional[ReviewServiceClient] = None
 user_client: Optional[UserServiceClient] = None
+orchestration_service: Optional[OrchestrationService] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage the lifecycle of HTTP clients."""
-    global walk_client, review_client, user_client
+    """Manage the lifecycle of HTTP clients and services."""
+    global walk_client, review_client, user_client, orchestration_service
     walk_client = WalkServiceClient(base_url=walk_service_url)
     review_client = ReviewServiceClient(base_url=review_service_url)
     user_client = UserServiceClient(base_url=user_service_url)
+    orchestration_service = OrchestrationService(walk_client, review_client, user_client)
     yield
     await walk_client.close()
     await review_client.close()
@@ -87,6 +96,13 @@ def get_user_client() -> UserServiceClient:
     if user_client is None:
         raise HTTPException(status_code=503, detail="Service not initialized")
     return user_client
+
+
+def get_orchestration_service() -> OrchestrationService:
+    """Dependency to get the orchestration service."""
+    if orchestration_service is None:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    return orchestration_service
 
 
 # ============================================================================
@@ -270,126 +286,31 @@ async def get_user_dogs(user_id: str, client: UserServiceClient = Depends(get_us
 @app.get("/walks/{walk_id}/complete", response_model=Dict[str, Any])
 async def get_walk_complete(
     walk_id: UUID,
-    walk_cli: WalkServiceClient = Depends(get_walk_client),
-    review_cli: ReviewServiceClient = Depends(get_review_client)
+    service: OrchestrationService = Depends(get_orchestration_service)
 ):
     """
     Get complete walk information including reviews.
-    Uses thread-based parallel execution to fetch walk and reviews simultaneously.
-    
-    This demonstrates parallel execution using ThreadPoolExecutor.
+    Uses thread-based parallel execution via orchestration service.
     """
-    # Validate walk exists first
-    walk = await walk_cli.get_walk(walk_id)
-    if walk is None:
+    result = await service.get_walk_with_reviews(walk_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="Walk not found")
-    
-    # Use threads for parallel execution
-    def fetch_reviews():
-        """Fetch reviews in a thread."""
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(
-                review_cli.list_reviews(walkId=str(walk_id))
-            )
-        finally:
-            loop.close()
-    
-    # Execute review fetch in parallel using threads
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        reviews_future = executor.submit(fetch_reviews)
-        reviews_data = reviews_future.result()
-    
-    reviews = reviews_data.get("data", []) if isinstance(reviews_data, dict) else reviews_data
-    
-    return {
-        "walk": walk.model_dump(),
-        "reviews": reviews,
-        "summary": {
-            "review_count": len(reviews) if isinstance(reviews, list) else 0
-        }
-    }
+    return result
 
 
 @app.get("/users/{user_id}/complete", response_model=Dict[str, Any])
 async def get_user_complete(
     user_id: str,
-    user_cli: UserServiceClient = Depends(get_user_client),
-    review_cli: ReviewServiceClient = Depends(get_review_client)
+    service: OrchestrationService = Depends(get_orchestration_service)
 ):
     """
     Get complete user information including dogs and reviews.
-    Uses thread-based parallel execution to fetch user, dogs, and reviews simultaneously.
-    
-    This demonstrates parallel execution using ThreadPoolExecutor.
+    Uses thread-based parallel execution via orchestration service.
     """
-    # Use threads for parallel execution
-    def fetch_user():
-        """Fetch user in a thread."""
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(user_cli.get_user(user_id))
-        finally:
-            loop.close()
-    
-    def fetch_dogs():
-        """Fetch dogs in a thread."""
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(user_cli.get_user_dogs(user_id))
-        finally:
-            loop.close()
-    
-    def fetch_reviews():
-        """Fetch reviews in a thread."""
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            # Fetch reviews where user is owner or walker
-            owner_reviews = loop.run_until_complete(
-                review_cli.list_reviews(ownerId=user_id)
-            )
-            walker_reviews = loop.run_until_complete(
-                review_cli.list_reviews(walkerId=user_id)
-            )
-            return {
-                "as_owner": owner_reviews.get("data", []) if isinstance(owner_reviews, dict) else owner_reviews,
-                "as_walker": walker_reviews.get("data", []) if isinstance(walker_reviews, dict) else walker_reviews
-            }
-        finally:
-            loop.close()
-    
-    # Execute all operations in parallel using threads
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        user_future = executor.submit(fetch_user)
-        dogs_future = executor.submit(fetch_dogs)
-        reviews_future = executor.submit(fetch_reviews)
-        
-        # Wait for all to complete
-        user = user_future.result()
-        dogs = dogs_future.result()
-        reviews = reviews_future.result()
-    
-    if user is None:
+    result = await service.get_user_complete(user_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    return {
-        "user": user.model_dump(),
-        "dogs": [dog.model_dump() for dog in dogs],
-        "reviews": reviews,
-        "summary": {
-            "dog_count": len(dogs),
-            "reviews_as_owner": len(reviews.get("as_owner", [])),
-            "reviews_as_walker": len(reviews.get("as_walker", []))
-        }
-    }
+    return result
 
 
 @app.get("/reviews/{review_id}/complete", response_model=Dict[str, Any])

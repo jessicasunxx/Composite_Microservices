@@ -1,8 +1,15 @@
 """HTTP Client for Review Service."""
 import os
+import sys
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 import httpx
 from fastapi import HTTPException
+
+# Import models from parent directory (shared, not duplicated)
+parent_dir = str(Path(__file__).parent.parent.parent)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 from models.review import ReviewCreate, ReviewUpdate, Review
 

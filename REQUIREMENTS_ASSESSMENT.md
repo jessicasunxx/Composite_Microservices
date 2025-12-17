@@ -138,23 +138,26 @@ The composite service provides higher-level orchestrated endpoints:
 ## 🔍 Notes
 
 ### About Atomic Microservices
-You mentioned "三个atomic microservice不是walk user review吗" (three atomic microservices: walk, user, review).
 
 **Current Implementation:**
-- You have **one atomic microservice** (Walk Service) that handles three related entities:
-  - **Walk** - The main entity
-  - **Assignment** - Links walkers to walks
-  - **Event** - Logs events during walks
+- You have **three separate atomic microservices**:
+  - **Walk Service** (port 8000) - Manages dog walk requests
+  - **User Service** (port 3001) - Manages users and dogs
+  - **Review Service** (port 8001) - Manages reviews and ratings
 
-This is a valid architecture! The composite microservice requirement is satisfied because:
-1. You have a composite service that encapsulates the atomic service
-2. The composite service adds value (FK constraints, parallel execution, orchestration)
-3. The atomic service is properly separated and can be called independently
+**Composite Service:**
+- **Single composite service** (`pawpal-composite-service/`) orchestrates all three
+- Encapsulates and exposes all atomic service APIs
+- Adds value through:
+  - Foreign key constraint validation across services
+  - Parallel execution via service layer
+  - Orchestrated endpoints that combine data from multiple services
 
-**If you need three separate atomic microservices:**
-- You would need to create separate services for User and Review
-- Then create a composite service that orchestrates all three
-- This would be more complex but is also valid
+**Architecture Improvements Applied:**
+1. ✅ **Single composite service** - Removed duplicate/legacy composite-service
+2. ✅ **No model duplication** - Composite uses shared models from parent directory
+3. ✅ **Service layer** - Threading logic separated from HTTP handlers
+4. ✅ **Clean boundaries** - Composite treats atomic services as black boxes
 
 ---
 
@@ -168,11 +171,12 @@ This is a valid architecture! The composite microservice requirement is satisfie
 - ✅ Models and OpenAPI documentation
 
 **Files:**
-- `composite-service/main.py` - Main composite service
-- `composite-service/client.py` - HTTP client for atomic service
-- `composite-service/constraints.py` - FK constraint validation
-- `models/*.py` - Pydantic models
-- `main.py` - Atomic service (fixed to support walk_id filter)
+- `pawpal-composite-service/main.py` - Main composite service (route handlers)
+- `pawpal-composite-service/services/orchestration.py` - Service layer for parallel execution
+- `pawpal-composite-service/clients/*.py` - HTTP clients for three atomic services
+- `pawpal-composite-service/constraints.py` - FK constraint validation
+- `models/*.py` - Shared Pydantic models (no duplication)
+- `main.py` - Walk Service atomic microservice (port 8000)
 
 **Testing:**
 1. Start atomic service: `uvicorn main:app --reload --port 8000`
@@ -180,4 +184,5 @@ This is a valid architecture! The composite microservice requirement is satisfie
 3. Access docs: `http://localhost:8001/docs`
 4. Test FK constraints: Try creating assignment with invalid walk_id
 5. Test parallel execution: Call `GET /walks/{walk_id}/complete`
+
 
